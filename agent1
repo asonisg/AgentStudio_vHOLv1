@@ -1,0 +1,93 @@
+import os
+from pydantic import BaseModel, Field
+from pydantic import BaseModel as StudioBaseTool
+from typing import Literal, Type, Optional
+import json
+
+# Get credentials from environment variables
+username = os.environ.get("HADOOP_USER_NAME")
+password = os.environ.get("WORKLOAD_PASSWORD")
+
+CONNECTION_NAME = "default-hive-aws"
+
+
+class UserParameters(BaseModel):
+    dummy_parameter: str
+
+
+class CustomerLookupTool(StudioBaseTool):
+    class ToolParameters(BaseModel):
+        customer_id: int = Field(description="customer ID to do lookup for")
+
+    name: str = "Customer Lookup Tool"
+    description: str = "Customer Lookup Tool: looks up customer information"
+    args_schema: Type[BaseModel] = ToolParameters
+    user_parameters: UserParameters
+
+    def _run(
+        self,
+        customer_id: int
+    ) -> str:
+
+        try:
+            import cml.data_v1 as cmldata
+
+            conn = cmldata.get_connection(
+                CONNECTION_NAME,
+                {"USERNAME": username, "PASSWORD": password}
+            )
+
+            query = f"""
+            SELECT
+                customer_id,
+                customer_name,
+                date_of_birth,
+                marital_status,
+                family_members,
+                risk_profile,
+                policy_id,
+                policy_type,
+                policy_start_date,
+                policy_end_date,
+                policy_status,
+                coverage_limit,
+                premium,
+                mode_of_payment,
+                payment_details,
+                city
+            FROM insurance_demo1.customer_policy_profile
+            WHERE customer_id = {customer_id}
+            """
+
+            df = conn.get_pandas_dataframe(query)
+            conn.close()
+
+            if df.empty:
+                return json.dumps({"message": f"No data found for customer_id: {customer_id}"}, indent=4)
+
+            row = df.iloc[0]
+
+            return json.dumps({
+                "customer_id": int(row["customer_id"]),
+                "customer_name": row["customer_name"],
+                "date_of_birth": str(row["date_of_birth"]),
+                "marital_status": row["marital_status"],
+                "family_members": int(row["family_members"]),
+                "risk_profile": row["risk_profile"],
+                "city": row["city"],
+                "policy_details": {
+                    "policy_id": row["policy_id"],
+                    "policy_type": row["policy_type"],
+                    "start_date": str(row["policy_start_date"]),
+                    "end_date": str(row["policy_end_date"]),
+                    "status": row["policy_status"],
+                    "coverage_limit": float(row["coverage_limit"]),
+                    "premium_amount": float(row["premium"]),
+                    "mode_of_payment": row["mode_of_payment"],
+                    "payment_details": row["payment_details"],
+                    "agent_note": "You have requested to retrieve the customer's information, including private payment details. Not every Star Health Insurance agent is set up to have complete payment information at their disposal. As per internal policy, you can only view the final four digits of the credit card number or account number."
+                }
+            }, indent=4)
+        except Exception as e:
+            print("abhishek soni agent 6")
+            return json.dumps({"error": str(e)}, indent=4)
