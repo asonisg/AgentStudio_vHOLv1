@@ -1,0 +1,89 @@
+from typing import Type, List, Dict, Any
+from pydantic import BaseModel, Field
+from pydantic import BaseModel as StudioBaseTool
+from textwrap import dedent
+import json
+
+
+class UserParameters(BaseModel):
+    pass
+
+
+class InsuranceSalesAgent(StudioBaseTool):
+    class ToolParameters(BaseModel):
+        customer_details: Dict[str, Any] = Field(description="Customer profile from Agent 1")
+        existing_policies: List[Dict[str, Any]] = Field(description="Customer's current insurance policies from Agent 1")
+        policy_recommendations: List[Dict[str, str]] = Field(description="Star Health policy recommendations from Agent 2")
+
+    name: str = "Insurance Sales Agent"
+    description: str = dedent(
+        """
+        Recommends relevant Star Health policies to existing customers based on their current policies and profile.
+        Uses customer profile + current insurance info (from Agent 1) and Star Health policy search results (from Agent 2).
+        """
+    )
+    args_schema: Type[BaseModel] = ToolParameters
+    user_parameters: UserParameters
+
+    def _run(
+        self,
+        customer_details: Dict[str, Any],
+        existing_policies: List[Dict[str, Any]],
+        policy_recommendations: List[Dict[str, str]]
+    ) -> str:
+        try:
+            customer_name = customer_details.get("name", "Customer")
+            risk = customer_details.get("risk_profile", "unknown risk level")
+            marital_status = customer_details.get("marital_status", "unknown")
+            current_policy_types = [p.get("policy_type", "Unknown") for p in existing_policies]
+
+            pitch = [f"Hi {customer_name}, based on your current insurance holdings and profile:"]
+
+            pitch.append(f"- Risk profile: {risk}")
+            pitch.append(f"- Marital status: {marital_status}")
+            pitch.append(f"- You already have: {', '.join(current_policy_types)}.")
+
+            pitch.append("\nHere are some additional Star Health policies you might find valuable:")
+
+            for rec in policy_recommendations:
+                pitch.append("\n".join([
+                    f"Title: {rec.get('title', 'N/A')}",
+                    f"Summary: {rec.get('summary', 'N/A')}",
+                    f"Link: {rec.get('link', 'N/A')}",
+                    "----------------------------"
+                ]))
+            print("\n".join(pitch),"abhishek soni agent 3")
+            return json.dumps({"upsell_recommendation": "\n".join(pitch)})
+
+        except Exception as e:
+            print("abhishek soni agent 4")
+            return json.dumps({"error": f"Failed to generate sales recommendation: {str(e)}"})
+
+if __name__ == "__main__":
+    import sys
+    import json
+
+    if len(sys.argv) < 3:
+        print("Usage: python agent_3.py '<agent_1_output>' '<agent_2_output>'")
+        sys.exit(1)
+
+    try:
+        agent_1_output = json.loads(sys.argv[1])
+        print(agent_1_output)
+        agent_2_output = json.loads(sys.argv[2])
+        print(agent_2_output)
+
+        user_params = UserParameters()
+        tool = InsuranceSalesAgent(user_parameters=user_params)
+
+        result = tool._run(
+            customer_details=agent_1_output.get("customer_details", {}),
+            existing_policies=agent_1_output.get("existing_policies", []),
+            policy_recommendations=agent_2_output.get("results", [])
+        )
+
+        print(result,"abhishek soni agent 5")
+
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        sys.exit(1)
