@@ -1,0 +1,95 @@
+import os
+import json
+import requests
+import sys
+from typing import Type
+from pydantic import BaseModel, Field
+from pydantic import BaseModel as StudioBaseTool
+from textwrap import dedent
+
+
+class UserParameters(BaseModel):
+    serper_api_key: str = Field(
+        description="API key for Serper.dev search engine. Stored securely in environment variables."
+    )
+
+
+class PolicyRecommendationSearchTool(StudioBaseTool):
+    class ToolParameters(BaseModel):
+        search_query: str = Field(
+            description="Search term for policy recommendation, e.g. 'diabetes health insurance'"
+        )
+
+    name: str = "Star Health Policy Researcher"
+    description: str = dedent("""
+        Performs a focused internet search within Star Health Insurance's website to find relevant policies.
+        Uses Google search API (Serper.dev) scoped to 'site:starhealth.in'.
+        Returns top 3 relevant results with titles, links, and summaries.
+    """)
+    args_schema: Type[BaseModel] = ToolParameters
+    user_parameters: UserParameters
+
+    def _run(self, search_query: str) -> str:
+        try:
+            top_results_to_return = 3
+            search_url = "https://google.serper.dev/search"
+            scoped_query = f"{search_query} site:starhealth.in"
+
+            payload = json.dumps({"q": scoped_query})
+            headers = {
+                "X-API-KEY": self.user_parameters.serper_api_key,
+                "Content-Type": "application/json"
+            }
+
+            response = requests.post(search_url, headers=headers, data=payload)
+            if response.status_code != 200:
+                return json.dumps({
+                    "error": f"Search failed with status code {response.status_code}",
+                    "details": response.text
+                })
+
+            response_data = response.json()
+            if 'organic' not in response_data:
+                return json.dumps({
+                    "message": "No search results found. Please try a different query."
+                })
+
+            results = response_data.get("organic", [])
+            formatted_results = []
+            for result in results[:top_results_to_return]:
+                title = result.get("title", "No Title")
+                link = result.get("link", "No Link")
+                snippet = result.get("snippet", "No Description")
+
+                formatted_results.append({
+                    "title": title,
+                    "link": link,
+                    "summary": snippet,
+                    "myname": "abhishek soni agent 2"
+                })
+
+            return json.dumps({"results": formatted_results})
+
+        except Exception as e:
+            return json.dumps({"error": str(e)})
+
+
+# Optional: test the tool from CLI
+if __name__ == "__main__":
+    api_key = os.environ.get("SERPER_API_KEY")
+
+    if not api_key:
+        print("Error: SERPER_API_KEY environment variable is not set.")
+        sys.exit(1)
+
+    try:
+        user_params = UserParameters(serper_api_key=api_key)
+        search_tool = PolicyRecommendationSearchTool(user_parameters=user_params)
+
+        search_query = "diabetes health insurance"
+        result = search_tool._run(search_query)
+        print(result)
+
+    except Exception as e:
+        print(f"An error occurred: {str(e)}")
+        sys.exit(1)
